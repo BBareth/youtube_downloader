@@ -17,6 +17,7 @@ Then follow the prompts.
 import yt_dlp
 import os
 import sys
+import getpass
 
 def download_video(url, output_path='.', noplaylist=False):
     """Download video in best quality up to 1440p"""
@@ -24,7 +25,11 @@ def download_video(url, output_path='.', noplaylist=False):
         'format': 'bestvideo[height<=1440]+bestaudio/best[height<=1440]',
         'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
+        # common options to reduce HTTP 403 issues
         'noplaylist': noplaylist,
+        'geo_bypass': True,
+        'nocheckcertificate': True,
+        'http_chunk_size': 10485760,  # 10MB chunks
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])
@@ -40,6 +45,8 @@ def download_audio(url, output_path='.', noplaylist=False):
             'preferredquality': '192',
         }],
         'noplaylist': noplaylist,
+        'geo_bypass': True,
+        'nocheckcertificate': True,
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])
@@ -70,24 +77,73 @@ def main():
         print("Invalid choice. Please enter '1' or '2'.")
 
     # Set output path (optional)
-    output_path = input("Output directory (press Enter for 'C:\\Users\\baret\\Videos'): ").strip()
+    default_videos = os.path.join(os.path.expanduser('~'), 'Videos')
+    output_path = input(f"Output directory (press Enter for '{default_videos}'): ").strip()
     if not output_path:
-        output_path = 'C:\\Users\\baret\\Videos'
+        output_path = default_videos
+
+    # optional cookiefile for authenticated or age-restricted content
+    cookiefile = input("Cookie file path (optional, export from browser in Netscape format; press Enter to skip): ").strip()
+    if cookiefile == '':
+        cookiefile = None
 
     # Ensure output directory exists
     if not os.path.exists(output_path):
         os.makedirs(output_path)
 
+    # Build common options for dry-run/info-extract and pass cookiefile if provided
+    common_opts = {
+        'geo_bypass': True,
+        'nocheckcertificate': True,
+        'http_chunk_size': 10485760,
+    }
+    if cookiefile:
+        common_opts['cookiefile'] = cookiefile
+
+    # Do a dry-run extraction to catch permission/403 errors early and show clearer messages
+    try:
+        print('Probing URL (info extraction)...')
+        with yt_dlp.YoutubeDL(common_opts) as ydl:
+            ydl.extract_info(url, download=False)
+    except Exception as e:
+        print('\nFailed to extract video info. This often means the video is restricted, requires login, or yt-dlp needs cookies or an updated extractor.')
+        print(f'Details: {e}')
+        print("If the video is age-restricted or private, try exporting your browser cookies (Netscape format) and provide the path when prompted next time.")
+        print("You can export cookies using browser extensions like 'EditThisCookie' or 'Get cookies.txt' and then re-run this script with the cookie file.")
+        sys.exit(1)
+
     try:
         if choice == 'mp4':
             print("Downloading video...")
-            download_video(url, output_path, noplaylist)
+            # merge our download-specific options with common_opts
+            ydl_opts = common_opts.copy()
+            ydl_opts.update({'format': 'bestvideo[height<=1440]+bestaudio/best[height<=1440]',
+                             'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
+                             'merge_output_format': 'mp4',
+                             'noplaylist': noplaylist})
+            if cookiefile:
+                ydl_opts['cookiefile'] = cookiefile
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
         else:
             print("Downloading audio...")
-            download_audio(url, output_path, noplaylist)
+            ydl_opts = common_opts.copy()
+            ydl_opts.update({'format': 'bestaudio/best',
+                             'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
+                             'postprocessors': [{
+                                 'key': 'FFmpegExtractAudio',
+                                 'preferredcodec': 'mp3',
+                                 'preferredquality': '192',
+                             }],
+                             'noplaylist': noplaylist})
+            if cookiefile:
+                ydl_opts['cookiefile'] = cookiefile
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
         print("Download completed successfully!")
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"An error occurred during download: {e}")
+        print("Common fixes: provide a cookie file, update yt-dlp (pip install -U yt-dlp), or try again later.")
         sys.exit(1)
 
 if __name__ == "__main__":
