@@ -1,6 +1,15 @@
 @echo off
-cd /d "C:\dev\youtube_downloader"
+cd /d "%~dp0"
+if not exist venv (
+    echo Virtual environment not found. Creating venv...
+    python -m venv venv
+    echo Installing dependencies...
+    call venv\Scripts\activate
+    python -m pip install -r requirements.txt
+    python -m playwright install
+    deactivate
+)
 call venv\Scripts\activate
-C:\dev\youtube_downloader\venv\Scripts\python.exe youtube_downloader.py
+python youtube_downloader.py
 deactivate
 pause
