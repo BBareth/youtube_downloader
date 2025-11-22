@@ -1,5 +1,5 @@
 @echo off
-cd /d "%~dp0"
+cd /d "C:\dev\youtube_downloader"
 if not exist venv (
     echo Virtual environment not found. Creating venv...
     python -m venv venv
